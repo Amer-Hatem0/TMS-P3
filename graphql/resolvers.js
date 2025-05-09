@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { AuthenticationError } = require('apollo-server-express');
+const Project = require('../models/Project');
 
 const resolvers = {
   Query: {
@@ -24,7 +26,31 @@ Query: {
 
     return { projects, students, tasks, finishedProjects };
   },
-},
+  },
+  Query: {
+    getProjects: async (_, __, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+      return await Project.find().populate('createdBy members');
+    },
+    getProject: async (_, { id }, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+      return await Project.findById(id).populate('createdBy members');
+    },
+    getMyProjects: async (_, __, { user }) => {
+      if (!user) throw new AuthenticationError('Unauthenticated');
+      return await Project.find({ members: user.id }).populate('createdBy');
+    },
+    getProjectOptions: async (_, __, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
+      return await Project.find({}, 'id title');  // Only fetch ID and title
+    },
+    
+    // For student dropdown (ID + username)
+    getStudentOptions: async (_, __, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
+      return await User.find({ role: 'student' }, 'id username');
+    }
+  },
 
   Mutation: {
     signUp: async (_, { username, password, role, universityId }) => {
@@ -89,7 +115,77 @@ Query: {
         : `/student/${user._id}`;
 
       return { token, user, redirectUrl };
+    },
+
+    // Projects
+    createProject: async (_, { title, description, startDate, endDate, memberIds }, { user }) => {
+      // Admin check
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+
+      // Validate all members are students
+      const studentCount = await User.countDocuments({
+        _id: { $in: memberIds },
+        role: 'student'
+      });
+      if (studentCount !== memberIds.length) throw new Error('Invalid student IDs');
+
+      const project = new Project({
+        title,
+        description,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        createdBy: user.id,
+        members: memberIds
+      });
+
+      await project.save();
+      return project.populate('members');
+    },
+
+    updateProjectProgress: async (_, { projectId, progress }, { user }) => {
+      if (!user) throw new AuthenticationError('Unauthenticated');
+      
+      // Verify student is a project member
+      const project = await Project.findOne({
+        _id: projectId,
+        members: user.id
+      });
+      if (!project) throw new ForbiddenError('Not a project member');
+
+      // Update logic (example - you might want to add a progress field to the model)
+      project.progress = Math.min(100, Math.max(0, progress));
+      await project.save();
+      return project;
+    },
+
+
+    createTask: async (_, { title, description, projectId, assignedTo, dueDate }, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
+      
+      // Validate project exists
+      const project = await Project.findById(projectId);
+      if (!project) throw new Error('Project not found');
+      
+      // Validate student exists
+      const student = await User.findOne({ 
+        _id: assignedTo, 
+        role: 'student' 
+      });
+      if (!student) throw new Error('Invalid student ID');
+      
+      const task = new Task({
+        title,
+        description,
+        project: projectId,
+        assignedTo,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        status: 'PENDING'  // Default status
+      });
+      
+      await task.save();
+      return task.populate('assignedTo project');
     }
+
   }
 };
 
