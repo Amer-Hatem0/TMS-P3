@@ -1,33 +1,31 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { AuthenticationError } = require('apollo-server-express');
+const { AuthenticationError, ForbiddenError } = require('apollo-server-express');
 const Project = require('../models/Project');
 
 const resolvers = {
+
   Query: {
     me: async (_, __, { token }) => {
       if (!token) return null;
 
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        //const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
         return await User.findById(decoded.id);
       } catch (err) {
         return null;
       }
-    }
-  },
-Query: {
-  dashboardStats: async () => {
-    const projects = await ProjectModel.countDocuments();
-    const students = await UserModel.countDocuments({ role: "student" });
-    const tasks = await TaskModel.countDocuments();
-    const finishedProjects = await ProjectModel.countDocuments({ status: "finished" });
-
-    return { projects, students, tasks, finishedProjects };
-  },
-  },
-  Query: {
+    },
+    dashboardStats: async () => {
+      const projects = await ProjectModel.countDocuments();
+      const students = await UserModel.countDocuments({ role: "student" });
+      const tasks = await TaskModel.countDocuments();
+      const finishedProjects = await ProjectModel.countDocuments({ status: "finished" });
+  
+      return { projects, students, tasks, finishedProjects };
+    },
     getProjects: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
       return await Project.find().populate('createdBy members');
