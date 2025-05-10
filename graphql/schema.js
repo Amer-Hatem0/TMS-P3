@@ -1,6 +1,13 @@
 const { gql } = require('apollo-server-express');
 
 const typeDefs = gql`
+  directive @auth(requires: String) on FIELD_DEFINITION
+
+  enum Role {
+    ADMIN
+    STUDENT
+  }
+    
   type User {
     id: ID!
     username: String!
