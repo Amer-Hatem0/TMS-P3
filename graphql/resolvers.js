@@ -13,7 +13,7 @@ const resolvers = {
       try {
         //const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
-        return await User.findById(decoded.id);
+        return await User.findById(user.id);
       } catch (err) {
         return null;
       }
