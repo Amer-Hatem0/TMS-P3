@@ -24,16 +24,16 @@ const resolvers = {
       return await Category.find().sort({ name: 1 });
     },
     dashboardStats: async () => {
-      const projects = await ProjectModel.countDocuments();
-      const students = await UserModel.countDocuments({ role: "student" });
-      const tasks = await TaskModel.countDocuments();
-      const finishedProjects = await ProjectModel.countDocuments({ status: "finished" });
+      const projects = await Project.countDocuments();
+      const students = await User.countDocuments({ role: "student" });
+      const tasks = await Task.countDocuments();
+      const finishedProjects = await Project.countDocuments({ status: "COMPLETED" });
   
       return { projects, students, tasks, finishedProjects };
     },
     getProjects: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
-      return await Project.find().populate('createdBy members');
+      return await Project.find().populate('createdBy members category');
     },
     getProject: async (_, { id }, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
@@ -45,7 +45,7 @@ const resolvers = {
     },
     getProjectOptions: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
-      return await Project.find({}, 'id title');  // Only fetch ID and title
+      return await Project.find({}, 'id title').populate('category');  // Only fetch ID and title
     },
     
     // For student dropdown (ID + username)
@@ -152,11 +152,32 @@ const resolvers = {
   if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
 
   // 2. Handle category (create if doesn't exist)
-  const categoryDoc  = await Category.findOneAndUpdate(
-    { name: { $regex: new RegExp(`^${categoryName}$`, 'i') } },
-    { $setOnInsert: { name: categoryName } },
-    { upsert: true, new: true }
-  );
+   if (!categoryName || categoryName.trim() === '') {
+    throw new Error('Category name is required');
+  }
+  // Handle category - with better error handling
+  let category;
+  try {
+    category = await Category.findOneAndUpdate(
+      { name: { $regex: new RegExp(`^${categoryName.trim()}$`, 'i') } },
+      { $setOnInsert: { name: categoryName.trim() } },
+      { 
+        upsert: true,
+        new: true,
+        runValidators: true
+      }
+    );
+  } catch (err) {
+    if (err.code === 11000) {
+      // Race condition occurred - try to fetch existing category
+      category = await Category.findOne({ 
+        name: { $regex: new RegExp(`^${categoryName.trim()}$`, 'i') } 
+      });
+      if (!category) throw new Error('Category creation conflict');
+    } else {
+      throw err;
+    }
+  }
 
   // 3. Convert member usernames to IDs
   const memberDocs  = await User.find({
@@ -173,7 +194,7 @@ const resolvers = {
       const project = new Project({
         title,
         description,
-        category: categoryDoc._id,
+        category: category._id,
         status: status || 'PENDING',
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
@@ -182,7 +203,7 @@ const resolvers = {
       });
 
       await project.save();
-      return project.populate('members category');
+      return Project.findById(project._id).populate('category createdBy members');
     },
 
     updateProjectProgress: async (_, { projectId, progress }, { user }) => {
