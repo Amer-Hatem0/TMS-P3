@@ -89,7 +89,6 @@ type Query {
     getProjects: [Project!]! @auth(requires: admin)
     getProject(id: ID!): Project @auth(requires: admin)
     getMyProjects: [Project!]! @auth(requires: student)
-    getProjectTasks(projectId: ID!): [Task!]! @auth(requires: admin)
     # Tasks
     getProjectTasks(projectId: ID!): [Task!]! @auth(requires: admin)
     getMyTasks: [Task!]! @auth(requires: student)

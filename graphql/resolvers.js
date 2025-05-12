@@ -52,12 +52,13 @@ const resolvers = {
     getStudentOptions: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
       return await User.find({ role: 'student' }, 'id username');
-    },
-    Task: {
-      projectTitle: async (parent) => {
-        const project = await Project.findById(parent.project);
-        return project?.title || '';
-      }
+    }
+  },
+  
+  Task: {
+    projectTitle: async (parent) => {
+      const project = await Project.findById(parent.project);
+      return project?.title || '';
     }
   },
 
@@ -141,7 +142,7 @@ const resolvers = {
     createProject: async (_, { 
       title, 
       description, 
-      category,
+      categoryName,
       status,
       startDate, 
       endDate, 
@@ -151,32 +152,33 @@ const resolvers = {
   if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
 
   // 2. Handle category (create if doesn't exist)
-  const category = await Category.findOneAndUpdate(
+  const categoryDoc  = await Category.findOneAndUpdate(
     { name: { $regex: new RegExp(`^${categoryName}$`, 'i') } },
     { $setOnInsert: { name: categoryName } },
     { upsert: true, new: true }
   );
 
   // 3. Convert member usernames to IDs
-  const members = await User.find({
+  const memberDocs  = await User.find({
     username: { $in: memberUsernames },
     role: 'student'
   });
 
-  if (members.length !== memberUsernames.length) {
-    throw new Error('One or more student usernames not found');
+  if (memberDocs.length !== memberUsernames.length) {
+    const foundUsernames = memberDocs.map(m => m.username);
+    const missing = memberUsernames.filter(u => !foundUsernames.includes(u));
+    throw new Error(`Students not found: ${missing.join(', ')}`);
   }
-  const memberIds = members.map(m => m._id);
 
       const project = new Project({
         title,
         description,
-        category: category._id,
+        category: categoryDoc._id,
         status: status || 'PENDING',
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         createdBy: user.id,
-        members: memberIds
+        members: memberDocs.map(m => m._id)
       });
 
       await project.save();
