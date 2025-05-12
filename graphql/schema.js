@@ -117,7 +117,7 @@ type Query {
     createProject(
       title: String!
       description: String
-      category: String!
+      categoryName: String!
       status: ProjectStatus!
       startDate: String
       endDate: String

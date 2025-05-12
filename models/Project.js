@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const projectSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -20,4 +20,4 @@ const projectSchema = new mongoose.Schema({
   progress: { type: Number, default: 0, min: 0, max: 100 } // Added for student updates
 }, { timestamps: true });
 
-export default mongoose.model('Project', projectSchema);
+module.exports = mongoose.model('Project', projectSchema);
