@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { AuthenticationError } = require('apollo-server-express');
 const Project = require('../models/Project');
+const Chat = require('../models/Chat');
 
 const resolvers = {
   Query: {
@@ -49,8 +50,32 @@ Query: {
     getStudentOptions: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
       return await User.find({ role: 'student' }, 'id username');
+    }  
+  },
+    Query: {
+    getChatHistory: async (_, { receiverId }, { user }) => {
+      return Chat.find({
+        $or: [
+          { sender: user.id, receiver: receiverId },
+          { sender: receiverId, receiver: user.id }
+        ]
+      }).sort('timestamp').populate('sender receiver');
+    },
+
+    getMyTasks: async (_, __, { user }) => {
+      return Task.find({ assignedTo: user.id })
+        .populate('project assignedTo');
+    },
+
+    getTask: async (_, { id }, { user }) => {
+      const task = await Task.findById(id).populate('assignedTo project');
+      if(user.role !== 'admin' && task.assignedTo.id !== user.id) {
+        throw new ForbiddenError('Unauthorized access');
+      }
+      return task;
     }
   },
+
 
   Mutation: {
     signUp: async (_, { username, password, role, universityId }) => {
@@ -184,7 +209,26 @@ Query: {
       
       await task.save();
       return task.populate('assignedTo project');
-    }
+    },
+
+    sendMessage: async (_, { receiverId, message }, { user }) => {
+      const newMessage = new Chat({
+        sender: user.id,
+        receiver: receiverId,
+        message
+      });
+      await newMessage.save();
+      return newMessage.populate('sender receiver');
+    },
+      updateTaskStatus: async (_, { id, status }, { user }) => {
+      const task = await Task.findById(id);
+      if(user.role !== 'admin' && task.assignedTo.toString() !== user.id) {
+        throw new ForbiddenError('Unauthorized');
+      }
+      task.status = status;
+      await task.save();
+      return task.populate('project assignedTo');
+    },
 
   }
 };

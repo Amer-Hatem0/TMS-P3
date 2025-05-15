@@ -29,23 +29,43 @@ const typeDefs = gql`
     dueDate: String
   }
 
+
   type TaskStats {
     assigned: Int!
     completed: Int!
     pending: Int!
   }
 
+type Chat {
+  id: ID!
+  sender: User!
+  receiver: User!
+  message: String!
+  timestamp: String!
+  read: Boolean!
+}
+
   type Query {
     users: [User!]!
     projects: [Project!]!
     tasks: [Task!]!
     studentTaskStats(id: ID!): TaskStats
+    getChatHistory(receiverId: ID!): [Chat!]! @auth
+    getMyTasks: [Task!]! @auth(requires: STUDENT)
+    getTask(id: ID!): Task @auth
+
+
   }
 
   type Mutation {
     createProject(name: String!, description: String, createdBy: ID!, students: [ID!]!): Project!
     createTask(title: String!, description: String, assignedTo: ID!, project: ID!, dueDate: String): Task!
+    sendMessage(receiverId: ID!, message: String!): Chat! @auth
+
   }
+
+
+
 `;
 
 export default typeDefs;
