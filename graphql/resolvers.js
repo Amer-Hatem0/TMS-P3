@@ -1,37 +1,37 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { AuthenticationError } = require('apollo-server-express');
+const { AuthenticationError, ForbiddenError } = require('apollo-server-express');
 const Project = require('../models/Project');
-const Chat = require('../models/Chat');
 
 const resolvers = {
+
   Query: {
     me: async (_, __, { token }) => {
       if (!token) return null;
 
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        return await User.findById(decoded.id);
+        //const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
+        return await User.findById(user.id);
       } catch (err) {
         return null;
       }
-    }
-  },
-Query: {
-  dashboardStats: async () => {
-    const projects = await ProjectModel.countDocuments();
-    const students = await UserModel.countDocuments({ role: "student" });
-    const tasks = await TaskModel.countDocuments();
-    const finishedProjects = await ProjectModel.countDocuments({ status: "finished" });
-
-    return { projects, students, tasks, finishedProjects };
-  },
-  },
-  Query: {
+    },
+    getAllCategories: async () => {
+      return await Category.find().sort({ name: 1 });
+    },
+    dashboardStats: async () => {
+      const projects = await Project.countDocuments();
+      const students = await User.countDocuments({ role: "student" });
+      const tasks = await Task.countDocuments();
+      const finishedProjects = await Project.countDocuments({ status: "COMPLETED" });
+  
+      return { projects, students, tasks, finishedProjects };
+    },
     getProjects: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
-      return await Project.find().populate('createdBy members');
+      return await Project.find().populate('createdBy members category');
     },
     getProject: async (_, { id }, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
@@ -43,7 +43,7 @@ Query: {
     },
     getProjectOptions: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
-      return await Project.find({}, 'id title');  // Only fetch ID and title
+      return await Project.find({}, 'id title').populate('category');  // Only fetch ID and title
     },
     
     // For student dropdown (ID + username)
@@ -52,30 +52,6 @@ Query: {
       return await User.find({ role: 'student' }, 'id username');
     }  
   },
-    Query: {
-    getChatHistory: async (_, { receiverId }, { user }) => {
-      return Chat.find({
-        $or: [
-          { sender: user.id, receiver: receiverId },
-          { sender: receiverId, receiver: user.id }
-        ]
-      }).sort('timestamp').populate('sender receiver');
-    },
-
-    getMyTasks: async (_, __, { user }) => {
-      return Task.find({ assignedTo: user.id })
-        .populate('project assignedTo');
-    },
-
-    getTask: async (_, { id }, { user }) => {
-      const task = await Task.findById(id).populate('assignedTo project');
-      if(user.role !== 'admin' && task.assignedTo.id !== user.id) {
-        throw new ForbiddenError('Unauthorized access');
-      }
-      return task;
-    }
-  },
-
 
   Mutation: {
     signUp: async (_, { username, password, role, universityId }) => {
@@ -142,29 +118,83 @@ Query: {
       return { token, user, redirectUrl };
     },
 
-    // Projects
-    createProject: async (_, { title, description, startDate, endDate, memberIds }, { user }) => {
-      // Admin check
-      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+    createCategory: async (_, { name }, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
+      
+      const existingCategory = await Category.findOne({ name });
+      if (existingCategory) {
+        throw new Error('Category already exists');
+      }
 
-      // Validate all members are students
-      const studentCount = await User.countDocuments({
-        _id: { $in: memberIds },
-        role: 'student'
+      return await Category.create({ name });
+    },
+
+    // Projects
+    createProject: async (_, { 
+      title, 
+      description, 
+      categoryName,
+      status,
+      startDate, 
+      endDate, 
+      memberUsernames 
+    }, { user }) => {
+      // 1. Admin check
+  if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+
+  // 2. Handle category (create if doesn't exist)
+   if (!categoryName || categoryName.trim() === '') {
+    throw new Error('Category name is required');
+  }
+  // Handle category - with better error handling
+  let category;
+  try {
+    category = await Category.findOneAndUpdate(
+      { name: { $regex: new RegExp(`^${categoryName.trim()}$`, 'i') } },
+      { $setOnInsert: { name: categoryName.trim() } },
+      { 
+        upsert: true,
+        new: true,
+        runValidators: true
+      }
+    );
+  } catch (err) {
+    if (err.code === 11000) {
+      // Race condition occurred - try to fetch existing category
+      category = await Category.findOne({ 
+        name: { $regex: new RegExp(`^${categoryName.trim()}$`, 'i') } 
       });
-      if (studentCount !== memberIds.length) throw new Error('Invalid student IDs');
+      if (!category) throw new Error('Category creation conflict');
+    } else {
+      throw err;
+    }
+  }
+
+  // 3. Convert member usernames to IDs
+  const memberDocs  = await User.find({
+    username: { $in: memberUsernames },
+    role: 'student'
+  });
+
+  if (memberDocs.length !== memberUsernames.length) {
+    const foundUsernames = memberDocs.map(m => m.username);
+    const missing = memberUsernames.filter(u => !foundUsernames.includes(u));
+    throw new Error(`Students not found: ${missing.join(', ')}`);
+  }
 
       const project = new Project({
         title,
         description,
+        category: category._id,
+        status: status || 'PENDING',
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         createdBy: user.id,
-        members: memberIds
+        members: memberDocs.map(m => m._id)
       });
 
       await project.save();
-      return project.populate('members');
+      return Project.findById(project._id).populate('category createdBy members');
     },
 
     updateProjectProgress: async (_, { projectId, progress }, { user }) => {
@@ -184,29 +214,43 @@ Query: {
     },
 
 
-    createTask: async (_, { title, description, projectId, assignedTo, dueDate }, { user }) => {
-      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
-      
-      // Validate project exists
-      const project = await Project.findById(projectId);
-      if (!project) throw new Error('Project not found');
-      
-      // Validate student exists
-      const student = await User.findOne({ 
-        _id: assignedTo, 
-        role: 'student' 
-      });
-      if (!student) throw new Error('Invalid student ID');
-      
+    createTask: async (_, { 
+      title, 
+      description, 
+      projectTitle, 
+      assignedToUsername, 
+      status, 
+      dueDate 
+    }, { user }) => {
+      // 1. Admin check
+  if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
+
+  // 2. Find project by title
+  const project = await Project.findOne({ title: projectTitle });
+  if (!project) throw new Error('Project not found');
+
+  // 3. Find student by username
+  const student = await User.findOne({ 
+    username: assignedToUsername,
+    role: 'student'
+  });
+  if (!student) throw new Error('Student not found');
+
+  // 4. Verify student is in project
+  if (!project.members.includes(student._id)) {
+    throw new Error('This student is not assigned to the project');
+  }
+
+  // 5. Create task
       const task = new Task({
         title,
         description,
-        project: projectId,
-        assignedTo,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        status: 'PENDING'  // Default status
+        project: project._id,
+        assignedTo: student._id,
+        status: status || 'PENDING',
+        dueDate: dueDate ? new Date(dueDate) : null
       });
-      
+
       await task.save();
       return task.populate('assignedTo project');
     },

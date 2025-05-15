@@ -1,6 +1,29 @@
 const { gql } = require('apollo-server-express');
 
 const typeDefs = gql`
+  directive @auth(requires: String) on FIELD_DEFINITION
+
+  enum Role {
+    admin
+    student
+  }
+
+  enum ProjectStatus {
+    IN_PROGRESS
+    COMPLETED
+    PENDING
+    ON_HOLD
+    CANCELLED
+  }
+
+  enum TaskStatus {
+    IN_PROGRESS
+    COMPLETED
+    PENDING
+    ON_HOLD
+    CANCELLED
+  }
+    
   type User {
     id: ID!
     username: String!
@@ -8,12 +31,20 @@ const typeDefs = gql`
     universityId: String
   }
 
+  type Category {
+  id: ID!
+  name: String!
+  createdAt: String!
+}
+
   type Project {
     id: ID!
     title: String!
     description: String
-    startDate: String  
-    endDate: String    
+    category: Category!
+    status: ProjectStatus!
+    startDate: String
+    endDate: String
     createdBy: User!
     members: [User!]!
     createdAt: String!
@@ -21,19 +52,16 @@ const typeDefs = gql`
   }
   
   type Task {
-  id: ID!
-  title: String!
-  description: String
-  status: TaskStatus!
-  assignedTo: User!
-  project: Project!
-  dueDate: String
+    id: ID!
+    title: String!
+    description: String
+    status: TaskStatus!
+    assignedTo: User!
+    project: Project!
+    dueDate: String
+    projectTitle: String!
   }
-  enum TaskStatus {
-    PENDING
-    IN_PROGRESS
-    COMPLETED
-  }
+  
 
   type AuthPayload {
     token: String!
@@ -48,6 +76,9 @@ type DashboardStats {
 }
 
 type Query {
+
+    getAllCategories: [Category!]!
+
     # Dashboard
     dashboardStats: DashboardStats
     
@@ -55,16 +86,15 @@ type Query {
     me: User
     
     # Projects
-    getProjects: [Project!]! @auth(requires: ADMIN)
-    getProject(id: ID!): Project @auth(requires: ADMIN)
-    getMyProjects: [Project!]! @auth(requires: STUDENT)
-    
+    getProjects: [Project!]! @auth(requires: admin)
+    getProject(id: ID!): Project @auth(requires: admin)
+    getMyProjects: [Project!]! @auth(requires: student)
     # Tasks
-    getProjectTasks(projectId: ID!): [Task!]! @auth(requires: ADMIN)
-    getMyTasks: [Task!]! @auth(requires: STUDENT)
+    getProjectTasks(projectId: ID!): [Task!]! @auth(requires: admin)
+    getMyTasks: [Task!]! @auth(requires: student)
 
-    getProjectOptions: [Project!]! @auth(requires: ADMIN)  # For project dropdown
-    getStudentOptions: [User!]! @auth(requires: ADMIN)     # For student dropdown
+    getProjectOptions: [Project!]! @auth(requires: admin)  # For project dropdown
+    getStudentOptions: [User!]! @auth(requires: admin)     # For student dropdown
 
   }
 
@@ -83,29 +113,32 @@ type Query {
 
     # Projects
     # Admin only
+    createCategory(name: String!): Category! @auth(requires: admin)
     createProject(
       title: String!
       description: String
-      startDate: String  # Added
-      endDate: String    # Added
-      memberIds: [ID!]!  # Student IDs
-    ): Project! @auth(requires: ADMIN)
+      categoryName: String!
+      status: ProjectStatus!
+      startDate: String
+      endDate: String
+      memberUsernames: [String!]!  # Changed to accept usernames
+    ): Project! @auth(requires: admin)
 
     # Student actions
     updateProjectProgress(
       projectId: ID!
       progress: Int!  # 0-100 percentage
-    ): Project! @auth(requires: STUDENT)
+    ): Project! @auth(requires: student)
 
     # Tasks
     createTask(
-    title: String!
-    description: String  # Added
-    projectId: ID!
-    assignedTo: ID!
-    status: TaskStatus   # Added (optional, defaults to PENDING)
-    dueDate: String
-  ): Task! @auth(requires: ADMIN)
+      title: String!
+      description: String
+      projectTitle: String!  # Changed to accept title
+    assignedToUsername: String!  # Changed to accept username
+      status: TaskStatus
+      dueDate: String
+    ): Task! @auth(requires: admin)
   }
 `;
 
