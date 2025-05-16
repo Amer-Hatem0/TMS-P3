@@ -61,7 +61,18 @@ const typeDefs = gql`
     dueDate: String
     projectTitle: String!
   }
-  
+  type Subscription {
+    newMessage(receiverId: ID!): Chat!
+  }
+
+  type Chat {
+    id: ID!
+    sender: User!
+    receiver: User!
+    message: String!
+    timestamp: String!
+    read: Boolean!
+  }
 
   type AuthPayload {
     token: String!
@@ -139,7 +150,19 @@ type Query {
       status: TaskStatus
       dueDate: String
     ): Task! @auth(requires: admin)
+
+
+     sendMessage(
+      receiverId: ID!
+      message: String!
+    ): Chat! @auth(requires: "admin")
+
+     updateTaskStatus(
+      id: ID!
+      status: TaskStatus!
+    ): Task! @auth(requires: "admin")
   }
 `;
 
-module.exports = { typeDefs };
+// module.exports = { typeDefs };
+module.exports = typeDefs;

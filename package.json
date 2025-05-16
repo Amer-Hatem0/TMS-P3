@@ -3,24 +3,28 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-  "start": "node server.js",
-  "server": "node server.js",
-  "seed": "node seed.js",
-  "dev": "nodemon server.js",
-  "test": "echo \"Error: no test specified\" && exit 1"
-},
+    "start": "node server.js",
+    "server": "node server.js",
+    "seed": "node seed.js",
+    "dev": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@graphql-tools/schema": "^10.0.23",
     "apollo-server-express": "^3.13.0",
     "bcryptjs": "^3.0.2",
     "dotenv": "^16.5.0",
     "express": "^4.21.2",
     "graphql": "^16.11.0",
+    "graphql-subscriptions": "^3.0.0",
+    "graphql-ws": "^6.0.5",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.14.2"
+    "mongoose": "^8.14.2",
+    "subscriptions-transport-ws": "^0.11.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
