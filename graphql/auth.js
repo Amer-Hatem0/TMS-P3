@@ -1,6 +1,6 @@
 const { defaultFieldResolver } = require('graphql');
 const { ForbiddenError, AuthenticationError } = require('apollo-server-express');
-
+//k
 const authDirective = (schema) => {
   return {
     auth: {
