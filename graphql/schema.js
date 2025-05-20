@@ -63,7 +63,18 @@ const typeDefs = gql`
     dueDate: String
     projectTitle: String!
   }
-  
+  type Message {
+  id: ID!
+  sender: User!
+  receiver: User!
+  content: String!
+  createdAt: String!
+  read: Boolean!
+}
+
+extend type Query {
+  getMessages(userId: ID!): [Message!]! @auth
+}
 
   type AuthPayload {
     token: String!
@@ -93,8 +104,8 @@ type Query {
     getMyProjects: [Project!]! @auth(requires: student)
     # Tasks
     getProjectTasks(projectId: ID!): [Task!]! @auth(requires: admin)
-    getAllTasks: [Task!]! @auth(requires: admin)
-    getMyTasks: [Task!]! @auth(requires: student)
+getMyTasks: [Task!]! @auth(requires: "student")
+getAllTasks: [Task!]! @auth(requires: admin)
 
     getProjectOptions: [Project!]! @auth(requires: admin)  # For project dropdown
     getStudentOptions: [User!]! @auth(requires: admin)     # For student dropdown
