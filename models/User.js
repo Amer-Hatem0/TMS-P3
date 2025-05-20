@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
 });
 
 // Add case-insensitive index for username and trim whitespace
-userSchema.index({ username: 1 }, { unique: true, collation: { locale: 'en', strength: 2 } });
+// userSchema.index({ username: 1 }, { unique: true, collation: { locale: 'en', strength: 2 } });
 userSchema.pre('save', function(next) {
   this.username = this.username.trim();
   next();

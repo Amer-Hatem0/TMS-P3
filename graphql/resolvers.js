@@ -310,6 +310,17 @@ const resolvers = {
     throw new Error('Due date must be in the future');
   }
 
+  // Duplicate task check
+  const existingTask = await Task.findOne({
+    title,
+    project: project._id,
+    assignedTo: student._id
+  });
+  
+  if (existingTask) {
+    throw new Error('This task already exists for the selected project and student');
+  }
+
   // 6. Create task
   const task = new Task({
     title,
