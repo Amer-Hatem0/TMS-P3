@@ -50,6 +50,7 @@ const typeDefs = gql`
     tasks: [Task!]!
     createdAt: String!
     updatedAt: String!
+    progress: Int!  # Add this field (0-100)
   }
   
   type Task {

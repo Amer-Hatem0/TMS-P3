@@ -275,21 +275,56 @@ try {
       return Project.findById(project._id).populate('category createdBy members');
     },
 
-    updateProjectProgress: async (_, { projectId, progress }, { user }) => {
-      if (!user) throw new AuthenticationError('Unauthenticated');
+    // updateProjectProgress: async (_, { projectId, progress }, { user }) => {
+    //   if (!user) throw new AuthenticationError('Unauthenticated');
       
-      // Verify student is a project member
-      const project = await Project.findOne({
-        _id: projectId,
-        members: user.id
-      });
-      if (!project) throw new ForbiddenError('Not a project member');
+    //   // Verify student is a project member
+    //   const project = await Project.findOne({
+    //     _id: projectId,
+    //     members: user.id
+    //   });
+    //   if (!project) throw new ForbiddenError('Not a project member');
 
-      // Update logic (example - you might want to add a progress field to the model)
-      project.progress = Math.min(100, Math.max(0, progress));
-      await project.save();
-      return project;
-    },
+    //   // Update logic (example - you might want to add a progress field to the model)
+    //   project.progress = Math.min(100, Math.max(0, progress));
+    //   await project.save();
+    //   return project;
+    // },
+    updateProjectProgress: async (_, { projectId, progress }, { user }) => {
+  // 1. Authentication check
+  if (!user) throw new AuthenticationError('Unauthenticated');
+  
+  // 2. Authorization - verify student is a project member
+  const project = await Project.findOne({
+    _id: projectId,
+    members: user.id
+  }).populate('members');
+  
+  if (!project) throw new ForbiddenError('Not a project member or project not found');
+
+  // 3. Input validation
+  const validatedProgress = Math.min(100, Math.max(0, progress));
+  if (isNaN(validatedProgress)) {
+    throw new Error('Progress must be a number between 0 and 100');
+  }
+
+  // 4. Update the project's progress
+  project.progress = validatedProgress;
+  
+  // 5. Save with error handling
+  try {
+    await project.save();
+    
+    // 6. Return updated project with populated fields
+    return Project.findById(projectId)
+      .populate('members')
+      .populate('createdBy')
+      .populate('category');
+  } catch (err) {
+    console.error('Error updating project progress:', err);
+    throw new Error('Failed to update project progress');
+  }
+},
 
 
     createTask: async (_, { 
