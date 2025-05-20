@@ -21,8 +21,17 @@ const resolvers = {
       }
     },
     getAllCategories: async () => {
-      return await Category.find().sort({ name: 1 });
-    },
+  try {
+    const categories = await Category.find({ name: { $ne: null } })
+      .sort({ name: 1 });
+    
+    // Double-check for null names (shouldn't happen with proper schema)
+    return categories.filter(c => c.name !== null && c.name.trim() !== '');
+  } catch (err) {
+    console.error('Error fetching categories:', err);
+    throw new Error('Failed to fetch categories');
+  }
+},
     dashboardStats: async () => {
       const projects = await Project.countDocuments();
       const students = await User.countDocuments({ role: "student" });
@@ -211,28 +220,33 @@ const resolvers = {
     throw new Error('Category name is required');
   }
   // Handle category - with better error handling
-  let category;
-  try {
-    category = await Category.findOneAndUpdate(
-      { name: { $regex: new RegExp(`^${categoryName.trim()}$`, 'i') } },
-      { $setOnInsert: { name: categoryName.trim() } },
-      { 
-        upsert: true,
-        new: true,
-        runValidators: true
-      }
-    );
-  } catch (err) {
-    if (err.code === 11000) {
-      // Race condition occurred - try to fetch existing category
-      category = await Category.findOne({ 
-        name: { $regex: new RegExp(`^${categoryName.trim()}$`, 'i') } 
-      });
-      if (!category) throw new Error('Category creation conflict');
-    } else {
-      throw err;
+  // In your createProject resolver
+let category;
+const categoryNameTrimmed = categoryName.trim();
+
+try {
+  // First try to find existing category (case-insensitive)
+  category = await Category.findOne({ 
+    name: { $regex: new RegExp(`^${categoryNameTrimmed}$`, 'i') } 
+  });
+
+  // If not found, use the same logic as createCategory mutation
+  if (!category) {
+    if (!user || user.role !== 'admin') {
+      throw new ForbiddenError('Admin only');
     }
+    
+    const existingCategory = await Category.findOne({ name: categoryNameTrimmed });
+    if (existingCategory) {
+      throw new Error('Category already exists');
+    }
+
+    category = await Category.create({ name: categoryNameTrimmed });
   }
+} catch (err) {
+  console.error('Failed to process category:', err);
+  throw new Error('Failed to process category: ' + err.message);
+}
 
   // 3. Convert member usernames to IDs
   const memberDocs  = await User.find({

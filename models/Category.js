@@ -13,18 +13,11 @@ const categorySchema = new mongoose.Schema({
       message: 'Category name cannot be empty'
     }
   }
-}, { timestamps: true });
-
-// Add pre-save hook to prevent null/empty names
-categorySchema.pre('save', function(next) {
-  if (!this.name || this.name.trim() === '') {
-    throw new Error('Category name is required');
-  }
-  this.name = this.name.trim();
-  next();
+}, {
+  timestamps: true
 });
 
-// Add case-insensitive unique index to prevent case-duplicates
-// categorySchema.index({ name: 1 }, { unique: true, collation: { locale: 'en', strength: 2 } });
+// Add text index for case-insensitive search
+categorySchema.index({ name: 'text' });
 
 module.exports = mongoose.model('Category', categorySchema);
