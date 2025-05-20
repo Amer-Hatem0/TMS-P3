@@ -47,6 +47,7 @@ const typeDefs = gql`
     endDate: String
     createdBy: User!
     members: [User!]!
+    tasks: [Task!]!
     createdAt: String!
     updatedAt: String!
   }
@@ -91,6 +92,7 @@ type Query {
     getMyProjects: [Project!]! @auth(requires: student)
     # Tasks
     getProjectTasks(projectId: ID!): [Task!]! @auth(requires: admin)
+    getAllTasks: [Task!]! @auth(requires: admin)
     getMyTasks: [Task!]! @auth(requires: student)
 
     getProjectOptions: [Project!]! @auth(requires: admin)  # For project dropdown
@@ -123,6 +125,7 @@ type Query {
       endDate: String
       memberUsernames: [String!]!  # Changed to accept usernames
     ): Project! @auth(requires: admin)
+    
 
     # Student actions
     updateProjectProgress(
@@ -139,6 +142,14 @@ type Query {
       status: TaskStatus
       dueDate: String
     ): Task! @auth(requires: admin)
+
+    # Project Deletion
+  deleteProject(id: ID!): Boolean! @auth(requires: admin)
+  deleteAllProjects: Boolean! @auth(requires: admin)
+  # Task Deletion
+  deleteTask(id: ID!): Boolean! @auth(requires: admin)
+  deleteAllTasks: Boolean! @auth(requires: admin)
+
   }
 `;
 

@@ -24,4 +24,7 @@ categorySchema.pre('save', function(next) {
   next();
 });
 
+// Add case-insensitive unique index to prevent case-duplicates
+categorySchema.index({ name: 1 }, { unique: true, collation: { locale: 'en', strength: 2 } });
+
 module.exports = mongoose.model('Category', categorySchema);

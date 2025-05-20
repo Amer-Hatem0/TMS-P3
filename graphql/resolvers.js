@@ -35,6 +35,19 @@ const resolvers = {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
       return await Project.find().populate('createdBy members category');
     },
+    getAllTasks: async (_, __, { user }) => {
+      // 1. Admin check
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+      
+      // 2. Fetch all tasks with populated relationships
+      return await Task.find()
+        .populate('assignedTo')
+        .populate({
+          path: 'project',
+          select: 'id title description status' // Include only needed fields
+        })
+        .sort({ createdAt: -1 }); // Newest tasks first
+    },
     getProject: async (_, { id }, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
       return await Project.findById(id).populate('createdBy members');
@@ -52,15 +65,57 @@ const resolvers = {
     getStudentOptions: async (_, __, { user }) => {
       if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
       return await User.find({ role: 'student' }, 'id username');
+    },
+    getProjectTasks: async (_, { projectId }, { user }) => {
+      // 1. Authorization check
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+      
+      // 2. Verify project exists (optional but good practice)
+      const projectExists = await Project.exists({ _id: projectId });
+      if (!projectExists) throw new Error('Project not found');
+
+      // 3. Query tasks using the project reference ID
+      const tasks = await Task.find({ project: projectId })
+        .populate('assignedTo')
+        .populate({
+          path: 'project',
+          select: 'title description' // Only include needed fields
+        });
+
+      return tasks;
     }
+    
   },
   
   Task: {
-    projectTitle: async (parent) => {
+  project: async (parent) => {
+    // First try to find by ID reference (preferred)
+    if (parent.project) {
       const project = await Project.findById(parent.project);
-      return project?.title || '';
+      if (project) {
+        return {
+          id: project._id,
+          title: project.title,
+          description: project.description
+        };
+      }
     }
-  },
+    
+    // Fallback to title lookup (backward compatibility)
+    if (parent.projectTitle) {
+      const project = await Project.findOne({ title: parent.projectTitle });
+      if (project) {
+        return {
+          id: project._id,
+          title: project.title,
+          description: project.description
+        };
+      }
+    }
+    
+    throw new Error(`Associated project not found for task ${parent._id}`);
+  }
+},
 
   Mutation: {
     signUp: async (_, { username, password, role, universityId }) => {
@@ -234,34 +289,97 @@ const resolvers = {
       // 1. Admin check
   if (!user || user.role !== 'admin') throw new ForbiddenError('Admin only');
 
-  // 2. Find project by title
+  // 2. Find project by EXACT title (case-sensitive)
   const project = await Project.findOne({ title: projectTitle });
-  if (!project) throw new Error('Project not found');
+  if (!project) throw new Error(`Project "${projectTitle}" not found`);
 
-  // 3. Find student by username
+  // 3. Find student
   const student = await User.findOne({ 
     username: assignedToUsername,
     role: 'student'
   });
   if (!student) throw new Error('Student not found');
 
-  // 4. Verify student is in project
+  // 4. Verify membership
   if (!project.members.includes(student._id)) {
-    throw new Error('This student is not assigned to the project');
+    throw new Error('Student is not a project member');
   }
 
-  // 5. Create task
-      const task = new Task({
-        title,
-        description,
-        project: project._id,
-        assignedTo: student._id,
-        status: status || 'PENDING',
-        dueDate: dueDate ? new Date(dueDate) : null
-      });
+  // 5. Validate due date
+  if (dueDate && new Date(dueDate) <= new Date()) {
+    throw new Error('Due date must be in the future');
+  }
 
-      await task.save();
-      return task.populate('assignedTo project');
+  // 6. Create task
+  const task = new Task({
+    title,
+    description,
+    project: project._id,  // Store ObjectId reference
+    projectTitle: project.title,  // Also store title for easy querying
+    assignedTo: student._id,
+    status: status || 'PENDING',
+    dueDate: dueDate ? new Date(dueDate) : null
+  });
+
+  await task.save();
+  return task.populate('assignedTo project');
+    },
+
+    deleteProject: async (_, { id }, { user }) => {
+      // 1. Admin check
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+
+      // 2. Start a transaction to ensure data consistency
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        // 3. First delete all tasks associated with the project
+        await Task.deleteMany({ project: id }).session(session);
+
+        // 4. Then delete the project itself
+        const result = await Project.findByIdAndDelete(id).session(session);
+
+        if (!result) {
+          throw new Error('Project not found');
+        }
+
+        // 5. Commit the transaction
+        await session.commitTransaction();
+        return true;
+      } catch (error) {
+        // 6. If anything fails, abort the transaction
+        await session.abortTransaction();
+        throw error;
+      } finally {
+        // 7. End the session
+        session.endSession();
+      }
+    },
+
+    deleteTask: async (_, { id }, { user }) => {
+      // 1. Admin check
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+
+      // 2. Delete the task
+      const result = await Task.findByIdAndDelete(id);
+
+      if (!result) {
+        throw new Error('Task not found');
+      }
+
+      return true;
+    },
+    deleteAllTasks: async (_, __, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+      await Task.deleteMany({});
+      return true;
+    },
+
+    deleteAllProjects: async (_, __, { user }) => {
+      if (!user || user.role !== 'admin') throw new ForbiddenError('Admin access only');
+      await Project.deleteMany({});
+      return true;
     }
 
   }
